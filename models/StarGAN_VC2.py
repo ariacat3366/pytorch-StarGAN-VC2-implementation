@@ -4,6 +4,68 @@ import torch.nn.functional as F
     
 from hparams import hparams
 
+            
+class CategoricalConditionalBatchNorm(torch.nn.Module):
+    def __init__(self, num_features, num_cats, eps=2e-5, momentum=0.1, affine=True,
+                 track_running_stats=True):
+        super().__init__()
+        self.num_features = num_features
+        self.num_cats = num_cats
+        self.eps = eps
+        self.momentum = momentum
+        self.affine = affine
+        self.track_running_stats = track_running_stats
+        if self.affine:
+            self.weight = torch.nn.Parameter(torch.Tensor(num_cats, num_features))
+            self.bias = torch.nn.Parameter(torch.Tensor(num_cats, num_features))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+        if self.track_running_stats:
+            self.register_buffer('running_mean', torch.zeros(num_features))
+            self.register_buffer('running_var', torch.ones(num_features))
+            self.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
+        else:
+            self.register_parameter('running_mean', None)
+            self.register_parameter('running_var', None)
+            self.register_parameter('num_batches_tracked', None)
+        self.reset_parameters()
+
+    def reset_running_stats(self):
+        if self.track_running_stats:
+            self.running_mean.zero_()
+            self.running_var.fill_(1)
+            self.num_batches_tracked.zero_()
+
+    def reset_parameters(self):
+        self.reset_running_stats()
+        if self.affine:
+            self.weight.data.fill_(1.0)
+            self.bias.data.zero_()
+
+    def forward(self, inputs, cats):
+        exponential_average_factor = 0.0
+
+        if self.training and self.track_running_stats:
+            self.num_batches_tracked += 1
+            if self.momentum is None:  # use cumulative moving average
+                exponential_average_factor = 1.0 / self.num_batches_tracked.item()
+            else:  # use exponential moving average
+                exponential_average_factor = self.momentum
+
+        out = torch.nn.functional.batch_norm(
+            inputs, self.running_mean, self.running_var, None, None,
+            self.training or not self.track_running_stats,
+            exponential_average_factor, self.eps)
+        if self.affine:
+            shape = [inputs.size(0), self.num_features] + (inputs.dim() - 2) * [1]
+            weight = self.weight.index_select(0, cats).view(shape)
+            bias = self.bias.index_select(0, cats).view(shape)
+            out = out * weight + bias
+        return out
+
+
+
 class GLU(nn.Module):
     def __init__(self, dim):
         super(GLU, self).__init__()
@@ -49,14 +111,14 @@ class BlockLayer(nn.Module):
                                      stride=1,
                                      padding=padding)
         
-        self.cin= batch_InstanceNorm1d(style_num=style_num, 
-                                       in_channels=out_channels)
+        self.cbn= CategoricalConditionalBatchNorm(num_features=out_channels,
+                                                  num_cats=style_num)
         
-        self.glu = GLU(dim=1)
+        self.glu = nn.GLU(dim=1)
 
     def forward(self, inputs, c_id):
         x = self.conv(inputs)
-        x = self.cin(x, c_id)
+        x = self.cbn(x, c_id)
         out = self.glu(x)
         return out
 
@@ -73,16 +135,16 @@ class Generator(nn.Module):
                                              kernel_size=(5,15),
                                              stride=1,
                                              padding=(2,7)),
-                                   GLU(dim=1))
+                                   nn.GLU(dim=1))
 
         # Downsample Layer
-        self.downSample1 = self.downSample(in_channels=128,
+        self.downSample1 = self.downSample(in_channels=64,
                                            out_channels=256,
                                            kernel_size=5,
                                            stride=2,
                                            padding=2)
 
-        self.downSample2 = self.downSample(in_channels=256,
+        self.downSample2 = self.downSample(in_channels=128,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=2,
@@ -107,56 +169,56 @@ class Generator(nn.Module):
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer2 = BlockLayer(in_channels=512,
+        self.blockLayer2 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer3 = BlockLayer(in_channels=512,
+        self.blockLayer3 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer4 = BlockLayer(in_channels=512,
+        self.blockLayer4 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer5 = BlockLayer(in_channels=512,
+        self.blockLayer5 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer6 = BlockLayer(in_channels=512,
+        self.blockLayer6 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer7 = BlockLayer(in_channels=512,
+        self.blockLayer7 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer8 = BlockLayer(in_channels=512,
+        self.blockLayer8 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
                                            style_num=self.num_classes**2)
         
-        self.blockLayer9 = BlockLayer(in_channels=512,
+        self.blockLayer9 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
@@ -164,7 +226,7 @@ class Generator(nn.Module):
                                            style_num=self.num_classes**2)
         
         # Up Convert Layer
-        self.dim1to2 = nn.Conv1d(in_channels=512,
+        self.dim1to2 = nn.Conv1d(in_channels=256,
                                  out_channels=2304,
                                  kernel_size=1,
                                  stride=1,
@@ -177,13 +239,13 @@ class Generator(nn.Module):
                                        stride=1,
                                        padding=2)
 
-        self.upSample2 = self.upSample(in_channels=256,
+        self.upSample2 = self.upSample(in_channels=128,
                                        out_channels=512,
                                        kernel_size=5,
                                        stride=1,
                                        padding=2)
 
-        self.lastConvLayer1 = nn.Conv2d(in_channels=128,
+        self.lastConvLayer1 = nn.Conv2d(in_channels=64,
                                        out_channels=1,
                                        kernel_size=(5,15),
                                        stride=1,
@@ -205,7 +267,7 @@ class Generator(nn.Module):
                                        nn.InstanceNorm2d(
                                        num_features=out_channels,
                                        affine=True),
-                                       GLU(dim=1))
+                                       nn.GLU(dim=1))
 
         return self.ConvLayer
 
@@ -216,7 +278,7 @@ class Generator(nn.Module):
                                                  stride=stride,
                                                  padding=padding),
                                        nn.PixelShuffle(2),
-                                       GLU(dim=1))
+                                       nn.GLU(dim=1))
         return self.convLayer
 
     def forward(self, inputs, c, c_):
@@ -325,3 +387,76 @@ class Discriminator(nn.Module):
         
         
         return output
+
+    
+    
+    
+class Classifier(nn.Module):
+    
+    def __init__(self):
+        super(Classifier, self).__init__()
+        
+        self.num_classes = hparams.num_classes
+        
+        self.downSample1 = self.downSample(in_channels=1,
+                                           out_channels=8,
+                                           kernel_size=4,
+                                           stride=2,
+                                           padding=2)
+
+        self.downSample2 = self.downSample(in_channels=4,
+                                           out_channels=16,
+                                           kernel_size=4,
+                                           stride=2,
+                                           padding=2)
+
+        self.downSample3 = self.downSample(in_channels=8,
+                                           out_channels=32,
+                                           kernel_size=4,
+                                           stride=2,
+                                           padding=2)
+        
+        self.downSample4 = self.downSample(in_channels=16,
+                                           out_channels=16,
+                                           kernel_size=(3,4),
+                                           stride=(1,2),
+                                           padding=(1,2))
+        
+        self.conv = nn.Conv2d(in_channels=8,
+                              out_channels=self.num_classes,
+                              kernel_size=(1,4),
+                              stride=(1,2),
+                              padding=(0,2))
+        
+        self.pool = nn.AvgPool2d((1,16))
+        self.activaton = nn.LogSoftmax()
+        
+    def downSample(self, in_channels, out_channels, kernel_size, stride, padding):
+        convLayer = nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                            out_channels=out_channels,
+                                            kernel_size=kernel_size,
+                                            stride=stride,
+                                            padding=padding),
+                                  nn.InstanceNorm2d(num_features=out_channels,
+                                                    affine=True),
+                                  nn.GLU(dim=1))
+        return convLayer
+    
+    def forward(self, inputs):
+        
+        inputs_reshaped = inputs[:, :, 0:8, :]
+        
+        downSample1 = self.downSample1(inputs_reshaped)
+        downSample2 = self.downSample2(downSample1)
+        downSample3 = self.downSample3(downSample2)
+        downSample4 = self.downSample4(downSample3)
+        conv = self.conv(downSample4)
+        pool = self.pool(conv)
+        outputs = self.activation(pool)
+        outputs = outputs.contiguous().view(-1, self.num_classes)
+        
+        return outputs
+    
+    
+    
+    

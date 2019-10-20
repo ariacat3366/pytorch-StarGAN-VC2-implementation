@@ -8,8 +8,20 @@ import librosa
 from sklearn.preprocessing import LabelBinarizer
 from tqdm import tqdm_notebook 
 
-from utils import World
+from utils import World, Converter
 from hparams import hparams
+
+def mcep_statistics(coded_sps):
+    coded_sps_concatenated = np.concatenate(coded_sps, axis = 0)
+    coded_sps_mean = np.mean(coded_sps_concatenated, axis = 0, keepdims = False)
+    coded_sps_std = np.std(coded_sps_concatenated, axis = 0, keepdims = False)
+    return coded_sps_mean, coded_sps_std
+
+def logf0_statistics(f0s):
+    log_f0s_concatenated = np.ma.log(np.concatenate(f0s))
+    log_f0s_mean = log_f0s_concatenated.mean()
+    log_f0s_std = log_f0s_concatenated.std()
+    return log_f0s_mean, log_f0s_std
 
 class VoiceDataset(Dataset):
     
@@ -36,6 +48,7 @@ class VoiceDataset(Dataset):
                 print("[{}] mcep loaded.".format(d_name))
             else:
                 mceps = []
+                f0s = []
                 for f in tqdm_notebook(os.listdir(data_dir)):
                     if not ".wav" in f:
                         continue
@@ -51,14 +64,21 @@ class VoiceDataset(Dataset):
                     if mcep.shape[0] < 128:
                         continue
                     mceps.append(mcep)
-                mceps = mceps[:source_limit]
+                    f0s.append(f0)
+                # mceps = mceps[:source_limit]
                 self.data.extend(mceps)
                 self.label.extend(np.ones((len(mceps)))*i)
                 with open(os.path.join(data_dir, d_name + "_mcep.pickle"), mode='wb') as f:
                     pickle.dump(mceps, f)
+                log_f0s_mean, log_f0s_std = logf0_statistics(f0s)
+                mceps_mean, mceps_std = mcep_statistics(mceps)
+                np.savez(os.path.join(data_dir, d_name + "_norm.npz"), log_f0s_mean=log_f0s_mean, 
+                         log_f0s_std=log_f0s_std, mceps_mean=mceps_mean, mceps_std=mceps_std)
                 print("[{}] voices converted.".format(d_name))
                     
         self.transform = transform
+        self.converter = Converter(root_dir, self.speakers)
+
 
     def __len__(self):
         return len(self.data)
@@ -69,6 +89,9 @@ class VoiceDataset(Dataset):
             
         data = self.data[idx]
         label = self.label[idx]
+        label = int(label)
+        
+        data = self.converter.forward_process(data, label)
 
         if self.transform:
             data, label = self.transform((data, label))

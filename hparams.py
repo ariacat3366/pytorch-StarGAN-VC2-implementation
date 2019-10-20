@@ -22,13 +22,14 @@ hparams = tf.contrib.training.HParams(
 
     # Training:
     batch_size=8,
-    num_epochs = 30000,
-    learning_rate_gen=2e-5,
-    learning_rate_disc=1e-5,
+    num_epochs = 1000,
+    learning_rate_gen=2e-4,
+    learning_rate_disc=1e-4,
     weight_decay=1e-5,
+    betas=(0.5,0.999),
 
     # Save
-    checkpoint_interval=5000,
+    checkpoint_interval=10,
 
     # Eval:
     max_iters=200,
