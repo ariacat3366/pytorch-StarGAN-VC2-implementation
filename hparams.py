@@ -15,9 +15,9 @@ hparams = tf.contrib.training.HParams(
     num_classes=5,
 
     # Data loader
-    num_workers=2,
+    num_workers=4,
     crop_size=(35, 128),
-    source_limit=2000,
+    source_limit=200,
     shuffle=True,
 
     # Training:

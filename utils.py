@@ -64,7 +64,7 @@ class Converter(object):
         x = x * std + mean
         return x
     
-    def generate(self, generator, source_label, target_label, save_path):
+    def generate(self, generator, source_label, target_label, save_path, save_original=False):
         
         if type(source_label) is int:
             source_speaker = self.speakers[source_label]
@@ -80,10 +80,12 @@ class Converter(object):
         
         data_dir = os.path.join(self.root_dir, source_speaker)
         file_path = os.path.join(data_dir, os.listdir(data_dir)[np.random.randint(0,100)])
-    
+        
         with torch.no_grad():
-
+            
             wav, _ = librosa.load(file_path, sr=hparams.fs)
+            if len(wav) < 100:
+                return
             wav, _ = librosa.effects.trim(wav)
             wav = wav.astype(np.double)
             f0, spec, ap = self.world.analyze(wav)
@@ -92,8 +94,8 @@ class Converter(object):
             mcep = mcep.reshape(mcep.shape[0], mcep.shape[1], 1)
             mcep = mcep.transpose((2, 1, 0))
             
-            source_label = torch.tensor(source_label, dtype=torch.long)
-            target_label = torch.tensor(target_label, dtype=torch.long)
+            source_label = torch.tensor(source_label, dtype=torch.long).view(1)
+            target_label = torch.tensor(target_label, dtype=torch.long).view(1)
             source_label, target_label = source_label.to(self.device), target_label.to(self.device)
             
             convert_result = []
@@ -101,7 +103,8 @@ class Converter(object):
             for start_idx in range(0, mcep.shape[2] - 128 + 1, 128):
 
                 seg = mcep[:, :, start_idx : start_idx+128]
-                seg = torch.FloatTensor(seg).to(self.device)
+                seg = self.forward_process(seg, source_speaker)
+                seg = torch.FloatTensor(seg)
                 seg = seg.view(1,1,seg.size(1),seg.size(2))
                 
                 seg = seg.to(self.device)
@@ -112,7 +115,7 @@ class Converter(object):
                 convert_result.append(outputs)
 
             if len(convert_result) == 1:
-                mcep_converted = convert_result
+                mcep_converted = np.array(convert_result)
             else:
                 mcep_converted = np.concatenate(convert_result, axis=1)
             mcep_converted = mcep_converted.transpose((1,0))
@@ -120,11 +123,13 @@ class Converter(object):
             mcep_converted = np.ascontiguousarray(mcep_converted)
             f0_converted = self.pitch_conversion(f0, source_speaker, target_speaker)
             
+            if save_original:
+                librosa.output.write_wav(save_path+"_original.wav", wav, hparams.fs) 
+            
             wav = self.world.synthesis_from_mcep(f0_converted, mcep_converted, ap)
             librosa.output.write_wav(save_path, wav, hparams.fs)     
 
 
-    
     
     
     

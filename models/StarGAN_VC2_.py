@@ -133,35 +133,35 @@ class Generator(nn.Module):
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer2 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer3 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer4 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer5 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer6 = BlockLayer(in_channels=256,
                                            out_channels=512,
@@ -175,21 +175,21 @@ class Generator(nn.Module):
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer8 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         self.blockLayer9 = BlockLayer(in_channels=256,
                                            out_channels=512,
                                            kernel_size=5,
                                            stride=1,
                                            padding=2,
-                                           style_num=self.num_classes)
+                                           style_num=self.num_classes*2)
         
         # Up Convert Layer
         self.dim1to2 = nn.Conv1d(in_channels=256,
@@ -217,6 +217,12 @@ class Generator(nn.Module):
                                        stride=1,
                                        padding=(2,7))
         
+        self.lastConvLayer2 = nn.Conv2d(in_channels=64,
+                                       out_channels=1,
+                                       kernel_size=3,
+                                       stride=1,
+                                       padding=1)
+        
 
     def downSample(self, in_channels, out_channels,  kernel_size, stride, padding):
         self.ConvLayer = nn.Sequential(nn.Conv2d(in_channels=in_channels,
@@ -243,8 +249,7 @@ class Generator(nn.Module):
 
     def forward(self, inputs, c, c_):
         
-        c_onehot = torch.eye(self.num_classes)[c_]
-        c_onehot.to(self.device)
+        c_onehot = torch.cat((torch.eye(self.num_classes)[c], torch.eye(self.num_classes)[c_]), dim=1).to(self.device)
         
         conv1 = self.conv1(inputs)
         downsample1 = self.downSample1(conv1)
